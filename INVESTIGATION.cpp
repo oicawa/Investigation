@@ -95,26 +95,58 @@ void Investigation_DebugLogStack(LPCTSTR filter, LPCTSTR file, int line, LPCTSTR
 	}
 
 	PVOID* pStack = (PVOID*)malloc(sizeof(PVOID) * stackSize);
+	if (pStack == nullptr)
+	{
+		return;
+	}
 	unsigned short frames = CaptureStackBackTrace(0, stackSize, pStack, NULL);
-	SYMBOL_INFO* symbol = (SYMBOL_INFO*)calloc(sizeof(SYMBOL_INFO) + 256 * sizeof(char), 1);
-	symbol->MaxNameLen = 255;
-	symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+	SYMBOL_INFO* pSymbol = (SYMBOL_INFO*)calloc(sizeof(SYMBOL_INFO) + 256 * sizeof(char), 1);
+	if (pSymbol == nullptr)
+	{
+		free(pStack);
+		return;
+	}
+	pSymbol->MaxNameLen = 255;
+	pSymbol->SizeOfStruct = sizeof(SYMBOL_INFO);
 	for (unsigned int i = 0; i < frames; i++)
 	{
-		SymFromAddr(process, (DWORD64)(pStack[i]), 0, symbol);
+		SymFromAddr(process, (DWORD64)(pStack[i]), 0, pSymbol);
 		TCHAR symbolName[256];
 		ZeroMemory(symbolName, sizeof(symbolName));
-		MultiByteToWideChar(CP_OEMCP, MB_PRECOMPOSED, symbol->Name, (int)strlen(symbol->Name), symbolName, (int)(sizeof symbolName) / 2);
+		MultiByteToWideChar(CP_OEMCP, MB_PRECOMPOSED, pSymbol->Name, (int)strlen(pSymbol->Name), symbolName, (int)(sizeof symbolName) / 2);
 		DWORD displacement = 0;
 		IMAGEHLP_LINE lineOfAddress = { sizeof(IMAGEHLP_LINE) };
 		SymGetLineFromAddr(process, (DWORD64)pStack[i], &displacement, &lineOfAddress);
 		// Write
 		ZeroMemory(log, sizeof(log));
-		Investigation_MakeLog(filter, file, line, function, log, _countof(log), _T("   %i: %s - 0x%0X(Line:%d)"), frames - i - 1, symbolName, symbol->Address, lineOfAddress.LineNumber);
+		Investigation_MakeLog(filter, file, line, function, log, _countof(log), _T("   %i: %s - 0x%0X(Line:%d)"), frames - i - 1, symbolName, pSymbol->Address, lineOfAddress.LineNumber);
 		Investigation_DebugLog(filter, log);
 	}
 	free(pStack);
-	free(symbol);
+	free(pSymbol);
+}
+
+bool Investigation_MakeBitsString(unsigned long unsignedValue, size_t byteSizeOfValue, LPTSTR pBuffer, size_t countOfBuffer)
+{
+	if (pBuffer == nullptr)
+	{
+		return false;
+	}
+	ZeroMemory(pBuffer, countOfBuffer * sizeof(TCHAR));
+	size_t allBitsCount = 8 * byteSizeOfValue;
+	if (countOfBuffer < allBitsCount)
+	{
+		return false;
+	}
+
+	unsigned long tmpUnsignedValue = unsignedValue;
+	for (size_t i = 0; i < allBitsCount; i++)
+	{
+		size_t index = (allBitsCount - 1) - i;
+		pBuffer[index] = (tmpUnsignedValue % 2 == 0) ? L'0' : L'1';
+		tmpUnsignedValue = tmpUnsignedValue / 2;
+	}
+	return true;
 }
 
 // --------------------------------------------------
